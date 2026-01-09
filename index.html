@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Number Match Puzzle</title>
+    <style>
+        body { background: #f0f0f0; color: #333; text-align: center; font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; }
+        .container { display: flex; flex-direction: column; align-items: center; }
+        canvas { 
+            border: 4px solid #888; 
+            background: #fff; 
+            cursor: pointer; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .info-panel { display: flex; gap: 40px; margin-bottom: 15px; align-items: center; }
+        .score-board { font-size: 24px; font-weight: bold; color: #333; }
+        .stamina-container { display: flex; flex-direction: column; align-items: center; }
+        .stamina-text { font-size: 24px; font-weight: bold; color: #e74c3c; margin-bottom: 5px; }
+        #stamina-bar-container { width: 250px; height: 25px; background: #ddd; border-radius: 12px; overflow: hidden; border: 2px solid #bbb; }
+        #stamina-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #e74c3c, #ff7675); transition: width 0.3s; }
+        .guide { background: #fff; padding: 15px 25px; border-radius: 12px; margin-top: 15px; border: 1px solid #ccc; width: 360px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .number-order { font-size: 28px; font-weight: bold; margin: 10px 0; letter-spacing: 5px; }
+        .arrow { color: #999; margin: 0 5px; font-size: 18px; }
+        .rule-text { font-size: 14px; color: #666; line-height: 1.8; }
+        .bonus { color: #27ae60; font-weight: bold; }
+        .penalty { color: #c0392b; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Number Click Puzzle</h1>
+        
+        <div class="info-panel">
+            <div class="score-board">Score: <span id="score">0</span></div>
+            <div class="stamina-container">
+                <div class="stamina-text">Stamina: <span id="stamina">30</span> / 30</div>
+                <div id="stamina-bar-container"><div id="stamina-bar"></div></div>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div class="guide">
+            <div class="rule-text">
+                クリック: <span class="penalty">-2</span> / 
+                3つ揃う: <span class="bonus">+1</span> / 
+                5つ以上: <span class="bonus">+3</span>
+            </div>
+            <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+            <div class="number-order">
+                <span style="color:#e74c3c">1</span><span class="arrow">→</span>
+                <span style="color:#3498db">2</span><span class="arrow">→</span>
+                <span style="color:#2ecc71">3</span><span class="arrow">→</span>
+                <span style="color:#f1c40f">4</span><span class="arrow">→</span>
+                <span style="color:#9b59b6">5</span><span class="arrow">→</span>
+                <span style="color:#e74c3c">1</span>
+            </div>
+            <div class="rule-text">クリックで次の数字に変わります</div>
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreElement = document.getElementById('score');
+const staminaElement = document.getElementById('stamina');
+const staminaBar = document.getElementById('stamina-bar');
+
+const ROWS = 10;
+const COLS = 6;
+const BLOCK_SIZE = 60;
+const NUMBERS = ['1', '2', '3', '4', '5'];
+const COLORS = { '1': '#e74c3c', '2': '#3498db', '3': '#2ecc71', '4': '#f1c40f', '5': '#9b59b6' };
+const MAX_STAMINA = 30;
+
+canvas.width = COLS * BLOCK_SIZE;
+canvas.height = ROWS * BLOCK_SIZE;
+
+let board = [];
+let score = 0;
+let stamina = 30;
+let isProcessing = false;
+let hoveredCell = { r: -1, c: -1 };
+let flashBlocks = [];
+
+function initBoard() {
+    board = [];
+    for (let r = 0; r < ROWS; r++) {
+        board[r] = [];
+        for (let c = 0; c < COLS; c++) {
+            board[r][c] = NUMBERS[Math.floor(Math.random() * NUMBERS.length)];
+        }
+    }
+    checkAndProcessMatches(true);
+}
+
+function updateUI() {
+    scoreElement.innerText = score;
+    staminaElement.innerText = stamina;
+    const percent = (stamina / MAX_STAMINA) * 100;
+    staminaBar.style.width = percent + "%";
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const num = board[r][c];
+            if (!num) continue;
+
+            const isHovered = (r === hoveredCell.r && c === hoveredCell.c);
+            const isFlashing = flashBlocks.some(b => b.r === r && b.c === c);
+
+            ctx.save();
+            
+            // ブロックの背景と境界線
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            ctx.strokeStyle = "#ddd";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+
+            if (isFlashing) {
+                ctx.fillStyle = "#ffff99"; // 消去前のハイライト
+                ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                ctx.strokeStyle = "#f1c40f";
+                ctx.lineWidth = 4;
+                ctx.strokeRect(c * BLOCK_SIZE + 2, r * BLOCK_SIZE + 2, BLOCK_SIZE - 4, BLOCK_SIZE - 4);
+            } else if (isHovered && !isProcessing) {
+                ctx.fillStyle = "#f9f9f9";
+                ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            }
+
+            // 数値の描画
+            ctx.fillStyle = COLORS[num];
+            ctx.font = "bold 32px 'Arial Black', sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(num, c * BLOCK_SIZE + BLOCK_SIZE/2, r * BLOCK_SIZE + BLOCK_SIZE/2);
+            
+            ctx.restore();
+        }
+    }
+}
+
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    hoveredCell.c = Math.floor((e.clientX - rect.left) / BLOCK_SIZE);
+    hoveredCell.r = Math.floor((e.clientY - rect.top) / BLOCK_SIZE);
+    draw();
+});
+
+canvas.addEventListener('mousedown', () => {
+    if (isProcessing || stamina <= 0) return;
+    if (hoveredCell.r >= 0 && hoveredCell.r < ROWS && hoveredCell.c >= 0 && hoveredCell.c < COLS) {
+        stamina = Math.max(0, stamina - 2);
+        updateUI();
+        changeNumber(hoveredCell.r, hoveredCell.c);
+    }
+});
+
+function changeNumber(r, c) {
+    let currentIndex = NUMBERS.indexOf(board[r][c]);
+    board[r][c] = NUMBERS[(currentIndex + 1) % NUMBERS.length];
+    draw();
+    checkAndProcessMatches(false);
+}
+
+function checkAndProcessMatches(isInitial = false) {
+    isProcessing = true;
+    let toRemove = [];
+
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 2; c++) {
+            if (board[r][c] && board[r][c] === board[r][c+1] && board[r][c] === board[r][c+2]) {
+                toRemove.push({r, c}, {r, c:c+1}, {r, c:c+2});
+            }
+        }
+    }
+    for (let r = 0; r < ROWS - 2; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if (board[r][c] && board[r][c] === board[r+1][c] && board[r][c] === board[r+2][c]) {
+                toRemove.push({r, c}, {r:r+1, c}, {r:r+2, c});
+            }
+        }
+    }
+
+    if (toRemove.length > 0) {
+        toRemove = toRemove.filter((v, i, a) => a.findIndex(t => (t.r === v.r && t.c === v.c)) === i);
+        
+        if (!isInitial) {
+            score += toRemove.length * 10;
+            stamina = Math.min(MAX_STAMINA, stamina + (toRemove.length >= 5 ? 3 : 1));
+            updateUI();
+        }
+
+        flashBlocks = toRemove;
+        draw();
+
+        setTimeout(() => {
+            flashBlocks = [];
+            toRemove.forEach(pos => board[pos.r][pos.c] = null);
+            draw();
+            setTimeout(() => {
+                applyGravity();
+                draw();
+                setTimeout(() => checkAndProcessMatches(isInitial), 300);
+            }, 200);
+        }, 300);
+    } else {
+        isProcessing = false;
+        if (stamina <= 0) {
+            alert("Game Over! Score: " + score);
+            location.reload();
+        }
+    }
+}
+
+function applyGravity() {
+    for (let c = 0; c < COLS; c++) {
+        let emptyRow = ROWS - 1;
+        for (let r = ROWS - 1; r >= 0; r--) {
+            if (board[r][c]) {
+                let temp = board[r][c];
+                board[r][c] = null;
+                board[emptyRow][c] = temp;
+                emptyRow--;
+            }
+        }
+        for (let r = emptyRow; r >= 0; r--) {
+            board[r][c] = NUMBERS[Math.floor(Math.random() * NUMBERS.length)];
+        }
+    }
+}
+
+initBoard();
+updateUI();
+draw();
+</script>
+</body>
+</html>
