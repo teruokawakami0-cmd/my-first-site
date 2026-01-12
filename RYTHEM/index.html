@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>江戸前・寿司職人マスター</title>
     <style>
         :root {
@@ -24,6 +24,8 @@
             user-select: none;
             -webkit-user-select: none;
             height: 100vh;
+            /* iOSのツールバー対策 */
+            height: -webkit-fill-available;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -33,6 +35,8 @@
         .header {
             width: 100%;
             padding: 10px 20px;
+            /* iPhoneの上部ノッチ対策 */
+            padding-top: calc(10px + env(safe-area-inset-top));
             background: #fff;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             display: flex;
@@ -55,6 +59,7 @@
             width: 90%;
             text-align: center;
             box-shadow: 0 4px 0 rgba(0,0,0,0.1);
+            flex-shrink: 0;
         }
         .order-title { font-size: 14px; color: #7f8c8d; margin-bottom: 5px;}
         .order-content { font-size: 28px; font-weight: bold; color: #2c3e50; }
@@ -86,6 +91,7 @@
             align-items: center;
             position: relative;
             background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(244,228,188,0) 70%);
+            min-height: 100px;
         }
         .sushi-display { font-size: 100px; transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         
@@ -131,6 +137,7 @@
             background: #333;
             padding: 15px 0;
             text-align: center;
+            flex-shrink: 0;
         }
         .phase-instruction {
             color: #fff;
@@ -182,15 +189,21 @@
             z-index: 5;
         }
 
-        /* --- アクションボタンエリア --- */
+        /* --- アクションボタンエリア（iPhone 16対策） --- */
         .action-area {
             width: 100%;
-            padding: 20px;
+            /* 下部の余白を多めに確保し、ボタンをURLバーから離す。
+               env(safe-area-inset-bottom) でデバイスごとの最適な余白を確保し、
+               さらに 20px 足すことでタップしやすくします。
+            */
+            padding: 20px 20px calc(25px + env(safe-area-inset-bottom));
             background: #fff;
             box-sizing: border-box;
             display: flex;
             justify-content: center;
             z-index: 5;
+            flex-shrink: 0;
+            border-top: 1px solid #eee;
         }
         .btn-tap {
             width: 100%;
@@ -205,6 +218,7 @@
             box-shadow: 0 6px 0 #c0392b;
             transition: all 0.1s;
             cursor: pointer;
+            -webkit-tap-highlight-color: transparent; /* タップ時の青い枠を消す */
         }
         .btn-tap:active {
             transform: translateY(4px);
@@ -219,12 +233,12 @@
             background: rgba(0,0,0,0.85);
             display: flex;
             flex-direction: column;
-            justify-content: space-between; /* 上下中央ではなく分散配置 */
+            justify-content: space-between;
             align-items: center;
             z-index: 1000;
             color: #fff;
             text-align: center;
-            padding: 40px 0; /* 全体の余白 */
+            padding: calc(40px + env(safe-area-inset-top)) 0 calc(30px + env(safe-area-inset-bottom));
             box-sizing: border-box;
         }
 
@@ -252,7 +266,8 @@
             box-shadow: 0 6px 0 #1e8449;
             cursor: pointer;
             transition: all 0.1s;
-            margin-bottom: 20px; /* action-areaとの微調整 */
+            margin-bottom: 20px;
+            -webkit-tap-highlight-color: transparent;
         }
         .btn-start-fixed:active {
             transform: translateY(4px);
@@ -302,7 +317,6 @@
         <button class="btn-tap" id="btn-action">へいお待ち！</button>
     </div>
 
-    <!-- スタート画面：タイトルと説明は中央、ボタンは下部 -->
     <div class="overlay" id="start-screen">
         <div class="overlay-center-content">
             <h1>江戸前<br>寿司職人マスター</h1>
@@ -506,8 +520,8 @@
         animationFrameId = requestAnimationFrame(loopCursor);
     }
 
+    elActionBtn.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(); }, {passive: false});
     elActionBtn.addEventListener('mousedown', (e) => { e.preventDefault(); handleInput(); });
-    elActionBtn.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(); });
 
     function handleInput() {
         if (gameState !== 'PLAYING') return;
@@ -559,7 +573,7 @@
     function completeSushi(basePoints) {
         gameState = 'HIT_STOP';
         combo++;
-        let addScore = 300 + (combo * 50); 
+        let addScore = 300 + (combo * 60); 
         score += addScore;
         uiVisual.innerText = "🍣";
         uiVisual.style.transform = "scale(1.8) rotate(10deg)"; 
@@ -573,7 +587,7 @@
             uiVisual.style.transform = "scale(1)";
             elGameView.classList.remove('flash-screen');
             nextOrder();
-            if (cursorSpeed < 4.0) { cursorSpeed += 0.2; }
+            if (cursorSpeed < 4.5) { cursorSpeed += 0.2; }
             updateUI();
             gameState = 'PLAYING';
             loopCursor(); 
@@ -608,9 +622,13 @@
         document.getElementById('result-screen').style.display = 'flex';
         document.getElementById('result-score').innerText = score.toLocaleString();
         const comment = document.getElementById('result-comment');
-        if (score > 10000) comment.innerText = "伝説の職人！";
-        else if (score > 5000) comment.innerText = "一人前の大将！";
-        else comment.innerText = "まだまだ修業が足りない...";
+        
+        if (score >= 15000) comment.innerText = "🍣 寿司の神様（もはや伝説）";
+        else if (score > 10000) comment.innerText = "🏆 伝説の職人！";
+        else if (score > 7000) comment.innerText = "🥢 凄腕の店主！";
+        else if (score > 4000) comment.innerText = "🍱 一人前の大将！";
+        else if (score > 2000) comment.innerText = "🍙 期待の若手職人！";
+        else comment.innerText = "🐣 見習い職人（練習あるのみ）";
     }
 </script>
 </body>
